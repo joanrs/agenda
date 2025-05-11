@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Planificador Semanal</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 font-sans">
+    <div class="flex flex-col md:flex-row min-h-screen">
+        <!-- Sidebar: Calendar -->
+        <div class="w-full md:w-1/4 bg-white p-4 shadow-md overflow-y-auto">
+            <div class="flex justify-between items-center mb-4">
+                <button id="prevYear" class="text-blue-500 hover:text-blue-700">← Año Anterior</button>
+                <span id="currentYear" class="text-lg font-bold"></span>
+                <button id="nextYear" class="text-blue-500 hover:text-blue-700">Año Siguiente →</button>
+            </div>
+            <div id="calendar" class="grid gap-4"></div>
+        </div>
+
+        <!-- Main Content: Weekly View -->
+        <div class="w-full md:w-2/4 p-4">
+            <div class="text-center mb-4">
+                <h2 id="weekInfo" class="text-xl font-semibold"></h2>
+            </div>
+            <div id="weekDays" class="flex flex-col gap-4"></div>
+        </div>
+
+        <!-- Right Panel: Item Input -->
+        <div class="w-full md:w-1/4 bg-white p-4 shadow-md">
+            <h3 class="text-lg font-semibold mb-4">Añadir Item</h3>
+            <input id="itemInput" type="text" placeholder="Escribe un item..." class="w-full p-2 border rounded mb-2">
+            <button id="addItem" class="w-full bg-blue-500 text-white p-2 rounded hover:bg-blue-600">Añadir</button>
+            <div id="itemList" class="mt-4"></div>
+        </div>
+    </div>
+
+    <script>
+        // State
+        let currentYear = new Date().getFullYear();
+        let currentWeek = getWeekNumber(new Date());
+        let selectedDay = null;
+        let items = JSON.parse(localStorage.getItem('items')) || [];
+        let dayItems = JSON.parse(localStorage.getItem('dayItems')) || {};
+
+        // DOM Elements
+        const calendarEl = document.getElementById('calendar');
+        const weekDaysEl = document.getElementById('weekDays');
+        const weekInfoEl = document.getElementById('weekInfo');
+        const itemInputEl = document.getElementById('itemInput');
+        const addItemBtn = document.getElementById('addItem');
+        const itemListEl = document.getElementById('itemList');
+        const prevYearBtn = document.getElementById('prevYear');
+        const nextYearBtn = document.getElementById('nextYear');
+        const currentYearEl = document.getElementById('currentYear');
+
+        // Utility Functions
+        function getWeekNumber(date) {
+            const d = new Date(date);
+            d.setHours(0, 0, 0, 0);
+            d.setDate(d.getDate() + 4 - (d.getDay() || 7));
+            const yearStart = new Date(d.getFullYear(), 0, 1);
+            return Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
+        }
+
+        function getWeekDates(year, week) {
+            const d = new Date(year, 0, 1);
+            d.setDate(d.getDate() + (week - 1) * 7 - d.getDay() + 1);
+            const weekDates = [];
+            for (let i = 0; i < 7; i++) {
+                weekDates.push(new Date(d));
+                d.setDate(d.getDate() + 1);
+            }
+            return weekDates;
+        }
+
+        // Capitalize first letter
+        function capitalize(str) {
+            return str.charAt(0).toUpperCase() + str.slice(1);
+        }
+
+        // Calendar Rendering
+        function renderCalendar(year) {
+            calendarEl.innerHTML = '';
+            currentYearEl.textContent = year;
+            const currentMonth = new Date().getMonth();
+            const startMonth = year === new Date().getFullYear() ? currentMonth : 0;
+            const endMonth = year === new Date().getFullYear() ? 11 : 11;
+
+            for (let month = startMonth; month <= endMonth; month++) {
+                const monthEl = document.createElement('div');
+                const monthName = capitalize(new Date(year, month).toLocaleString('es', { month: 'long' }));
+                monthEl.innerHTML = `<h3 class="text-md font-semibold mb-2">${monthName}</h3>`;
+                const daysEl = document.createElement('div');
+                daysEl.className = 'grid grid-cols-7 gap-1 text-center';
+                const firstDay = new Date(year, month, 1).getDay();
+                const daysInMonth = new Date(year, month + 1, 0).getDate();
+
+                for (let i = 0; i < (firstDay || 7) - 1; i++) {
+                    daysEl.innerHTML += '<div></div>';
+                }
+                for (let day = 1; day <= daysInMonth; day++) {
+                    const date = new Date(year, month, day);
+                    const weekNum = getWeekNumber(date);
+                    daysEl.innerHTML += `<div class="p-1 cursor-pointer hover:bg-blue-100 ${weekNum === currentWeek && year === currentYear ? 'bg-blue-200' : ''}" data-week="${weekNum}">${day}</div>`;
+                }
+                monthEl.appendChild(daysEl);
+                calendarEl.appendChild(monthEl);
+            }
+
+            calendarEl.querySelectorAll('[data-week]').forEach(day => {
+                day.addEventListener('click', () => {
+                    currentWeek = parseInt(day.dataset.week);
+                    renderWeek();
+                });
+            });
+        }
+
+        // Week Rendering
+        function renderWeek() {
+            weekDaysEl.innerHTML = '';
+            const weekDates = getWeekDates(currentYear, currentWeek);
+            const startDate = weekDates[0].toLocaleDateString('es');
+            const endDate = weekDates[6].toLocaleDateString('es');
+            weekInfoEl.textContent = `Semana ${currentWeek}: ${startDate} - ${endDate}`;
+
+            weekDates.forEach((date, index) => {
+                const dateKey = date.toISOString().split('T')[0];
+                const dayEl = document.createElement('div');
+                dayEl.className = `p-4 bg-white rounded shadow ${selectedDay === dateKey ? 'border-2 border-blue-500' : ''}`;
+                const dayName = capitalize(date.toLocaleDateString('es', { weekday: 'long' }));
+                dayEl.innerHTML = `
+                    <h4 class="font-semibold">${dayName} ${date.getDate()}</h4>
+                    <div class="mt-2 min-h-[100px]">
+                        ${(dayItems[dateKey] || []).map((item, i) => `
+                            <div class="flex justify-between items-center p-1 bg-gray-100 rounded mb-1">
+                                <span>${item}</span>
+                                <div class="flex gap-1">
+                                    <button class="text-blue-500 hover:text-blue-700 ${i === 0 ? 'invisible' : ''}" data-date="${dateKey}" data-index="${i}" data-action="up">↑</button>
+                                    <button class="text-blue-500 hover:text-blue-700 ${i === (dayItems[dateKey]?.length - 1) ? 'invisible' : ''}" data-date="${dateKey}" data-index="${i}" data-action="down">↓</button>
+                                    <button class="text-red-500 hover:text-red-700" data-date="${dateKey}" data-index="${i}" data-action="delete">X</button>
+                                </div>
+                            </div>
+                        `).join('')}
+                    </div>
+                `;
+                dayEl.addEventListener('click', () => {
+                    selectedDay = dateKey;
+                    renderWeek();
+                });
+                weekDaysEl.appendChild(dayEl);
+            });
+
+            // Handle item actions (move up, move down, delete)
+            weekDaysEl.querySelectorAll('button[data-action]').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const date = btn.dataset.date;
+                    const index = parseInt(btn.dataset.index);
+                    const action = btn.dataset.action;
+
+                    if (action === 'delete') {
+                        dayItems[date].splice(index, 1);
+                        if (dayItems[date].length === 0) delete dayItems[date];
+                    } else if (action === 'up' && index > 0) {
+                        [dayItems[date][index], dayItems[date][index - 1]] = [dayItems[date][index - 1], dayItems[date][index]];
+                    } else if (action === 'down' && index < dayItems[date].length - 1) {
+                        [dayItems[date][index], dayItems[date][index + 1]] = [dayItems[date][index + 1], dayItems[date][index]];
+                    }
+
+                    localStorage.setItem('dayItems', JSON.stringify(dayItems));
+                    renderWeek();
+                });
+            });
+        }
+
+        // Item List Rendering
+        function renderItems() {
+            itemListEl.innerHTML = items.map((item, index) => `
+                <div class="flex justify-between items-center p-2 bg-gray-100 rounded mb-1 cursor-pointer hover:bg-gray-200" data-index="${index}">
+                    <span>${item}</span>
+                    <button class="text-red-500 hover:text-red-700" data-delete="${index}">X</button>
+                </div>
+            `).join('');
+
+            // Add item to selected day
+            itemListEl.querySelectorAll('div[data-index]').forEach(div => {
+                div.addEventListener('click', () => {
+                    if (selectedDay) {
+                        const index = parseInt(div.dataset.index);
+                        if (!dayItems[selectedDay]) dayItems[selectedDay] = [];
+                        dayItems[selectedDay].push(items[index]);
+                        localStorage.setItem('dayItems', JSON.stringify(dayItems));
+                        renderWeek();
+                    } else {
+                        alert('Por favor, selecciona un día primero.');
+                    }
+                });
+            });
+
+            // Delete item from list
+            itemListEl.querySelectorAll('button[data-delete]').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    const index = parseInt(btn.dataset.delete);
+                    items.splice(index, 1);
+                    localStorage.setItem('items', JSON.stringify(items));
+                    renderItems();
+                });
+            });
+        }
+
+        // Add Item Function
+        function addItem() {
+            const item = itemInputEl.value.trim();
+            if (item) {
+                items.push(item);
+                localStorage.setItem('items', JSON.stringify(items));
+                itemInputEl.value = '';
+                renderItems();
+            }
+        }
+
+        // Event Listeners
+        addItemBtn.addEventListener('click', addItem);
+
+        itemInputEl.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                addItem();
+            }
+        });
+
+        prevYearBtn.addEventListener('click', () => {
+            currentYear--;
+            renderCalendar(currentYear);
+        });
+
+        nextYearBtn.addEventListener('click', () => {
+            currentYear++;
+            renderCalendar(currentYear);
+        });
+
+        // Initial Render
+        renderCalendar(currentYear);
+        renderWeek();
+        renderItems();
+    </script>
+</body>
+</html>
